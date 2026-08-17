@@ -130,6 +130,9 @@ export function checkResourceParams(
     },
     query,
     "read",
+    // A partner has never heard of a tool; the word for this thing out here is
+    // "resource", and the message is part of the published contract.
+    "resource",
   );
 }
 
@@ -151,5 +154,6 @@ export function checkOperationParams(
     },
     body,
     "write",
+    "operation",
   );
 }

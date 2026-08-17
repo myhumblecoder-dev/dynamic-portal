@@ -98,7 +98,7 @@ export function buildCatalog(
     const operations = projection.operations
       .map(({ name, actionId }) => {
         const action = entry.manifest.actions.find((candidate) => candidate.id === actionId);
-        return action !== undefined && published(action.audience, principal)
+        return action !== undefined && offered(entry.satellite, action, principal)
           ? describeOperation(name, action)
           : undefined;
       })
@@ -178,7 +178,7 @@ export function resolveOperation(
     if (mapping === undefined) continue;
 
     const action = entry.manifest.actions.find((candidate) => candidate.id === mapping.actionId);
-    if (action === undefined || !published(action.audience, principal)) continue;
+    if (action === undefined || !offered(entry.satellite, action, principal)) continue;
 
     return {
       satelliteId: entry.satellite.id,
@@ -206,6 +206,43 @@ const reachable = (satellite: Satellite, principal: Principal): boolean =>
 const published = (audience: readonly ("internal" | "external")[], principal: Principal): boolean =>
   audience.includes("external") &&
   authorize(principal, { audience, rbacScopes: [] }).allowed;
+
+/**
+ * Everything `published` asks of a screen, plus the two things a *write* needs.
+ *
+ * An action that declares no parameters is not offered at all, for the same
+ * reason the MCP gateway skips one: a caller who cannot see the shape guesses
+ * field names at a write endpoint, and here it is worse than for an agent —
+ * the façade would accept only `{}`, so every call posts an empty payload to a
+ * mutation and the partner has no way to send what it actually needs.
+ *
+ * And the registry's tool policy is the file that governs writes, so the scopes
+ * it attaches to one are required here too. Without this, `reachable` is the
+ * only scope check on the whole path and it asks for the satellite's *read*
+ * scopes — a partner holding `orders.read` could run an operation the registry
+ * says needs `orders.write`, and only the satellite's own check would stop it.
+ * The agent path already enforces this; the outermost edge should not be the
+ * one surface that does not.
+ */
+const offered = (
+  satellite: Satellite,
+  action: ActionDescriptor,
+  principal: Principal,
+): boolean =>
+  action.params !== undefined &&
+  published(action.audience, principal) &&
+  authorize(principal, {
+    audience: action.audience,
+    // `hasOwn`, not bare bracket access: `tools` is a plain object and
+    // `constructor` is a legal id, so `tools["constructor"]` resolves to the
+    // `Object` function, whose `rbacScopes` is undefined — and `?? []` would
+    // then quietly require *no* scopes on exactly the surface where that is
+    // worst. The gateway fixed this same read two changes ago; the fix did not
+    // travel with the rule.
+    rbacScopes: Object.hasOwn(satellite.tools, action.id)
+      ? (satellite.tools[action.id]?.rbacScopes ?? [])
+      : [],
+  }).allowed;
 
 function describeResource(name: string, screen: ScreenDescriptor): PublicResource {
   return {

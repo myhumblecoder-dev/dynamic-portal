@@ -138,6 +138,80 @@ describe("default-deny, at the outermost edge", () => {
     expect(catalog.services[0]?.operations).toEqual([]);
   });
 
+  it("omits an operation whose action declares no parameters", () => {
+    // The same refusal the MCP gateway makes, and for a sharper reason here: a
+    // parameterless projection accepts only `{}`, so publishing it would offer
+    // a partner a write they can never send the fields for.
+    const catalog = buildCatalog(
+      [
+        entry(
+          {},
+          {
+            actions: [
+              { id: "orders.approve", title: "Approve", audience: ["internal", "external"] },
+            ],
+          },
+        ),
+      ],
+      external,
+    );
+    expect(catalog.services[0]?.operations).toEqual([]);
+    expect(resolveOperation([entry()], external, "order-management", "approve")).toBeDefined();
+  });
+
+  it("requires the scopes the registry attached to the write, not just the read ones", () => {
+    // `reachable` only asks for the satellite's read scopes. Without this the
+    // outermost edge would be the one surface that runs a governed write on a
+    // read-only principal's say-so.
+    const readOnly: Principal = { ...external, scopes: ["orders.read"] };
+    const governed = entry({ tools: { "orders.approve": { rbacScopes: ["orders.write"] } } });
+
+    expect(buildCatalog([governed], readOnly).services[0]?.operations).toEqual([]);
+    expect(
+      resolveOperation([governed], readOnly, "order-management", "approve"),
+    ).toBeUndefined();
+
+    const writer: Principal = { ...external, scopes: ["orders.read", "orders.write"] };
+    expect(resolveOperation([governed], writer, "order-management", "approve")).toBeDefined();
+  });
+
+  it("does not read a tool policy off the prototype chain", () => {
+    // `constructor` is a legal id, `tools` is a plain object, and bare bracket
+    // access resolves it to the `Object` function — whose `rbacScopes` is
+    // undefined, which would silently mean "no scopes required" on the one
+    // surface where that is a disclosure rather than an inconvenience.
+    const governed = entry(
+      { tools: { "orders.approve": { rbacScopes: ["orders.write"] } } },
+      {
+        actions: [
+          {
+            id: "constructor",
+            title: "Odd",
+            params: [{ name: "id", type: "string" }],
+            audience: ["internal", "external"],
+          },
+        ],
+      },
+    );
+    const withOddName = {
+      ...governed,
+      satellite: {
+        ...governed.satellite,
+        public: {
+          ...governed.satellite.public!,
+          operations: [{ name: "odd", actionId: "constructor" }],
+        },
+      },
+    };
+
+    // No policy exists for it, so no extra scopes are demanded — and, crucially,
+    // nothing throws and nothing is read off `Object`.
+    expect(() => buildCatalog([withOddName], external)).not.toThrow();
+    expect(buildCatalog([withOddName], external).services[0]?.operations.map((o) => o.name)).toEqual(
+      ["odd"],
+    );
+  });
+
   it("omits a resource the projection names but the manifest does not have", () => {
     // A screen deleted by a satellite team leaves a dangling public name. It
     // disappears from the catalog rather than 404ing at call time.

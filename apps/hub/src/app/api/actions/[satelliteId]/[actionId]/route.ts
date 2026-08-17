@@ -2,6 +2,7 @@ import { authorize } from "@portal/identity";
 import { findSatellite } from "@portal/registry";
 import type { Failure } from "@portal/registry";
 import type { ActionApiResult } from "@/lib/actionApi";
+import { MAX_PAYLOAD_BYTES, readBounded, statusFor } from "@/lib/http";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal } from "@/lib/session";
 
@@ -19,54 +20,11 @@ import { currentPrincipal } from "@/lib/session";
  * screen route follows and for the same reason.
  */
 
-/**
- * A payload larger than this is refused before it is proxied.
- *
- * Without it the hub will forward whatever it is handed, which makes it a
- * convenient amplifier pointed at an internal service that is not on the
- * network the caller can otherwise reach. 256 KB is far past any form.
- */
-const MAX_PAYLOAD_BYTES = 256 * 1024;
-
 const NOT_FOUND: ActionApiResult = {
   ok: false,
   reason: "not-found",
   message: "That action is not available.",
 };
-
-/**
- * Reads the body, giving up as soon as it passes the limit.
- *
- * `request.text()` would buffer the whole thing first and only then let the
- * caller object, which pays exactly the cost the limit exists to avoid — and a
- * `content-length` check alone does not save it, because a chunked request has
- * no such header and a dishonest one can simply understate it.
- *
- * Counted in bytes off the wire, not in characters: `String.length` is UTF-16
- * code units, so a payload of non-ASCII text weighs up to twice what it would
- * be credited with.
- */
-async function readBounded(request: Request, limit: number): Promise<string | null> {
-  if (request.body === null) return "";
-
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > limit) {
-      // Stops the sender rather than reading to the end and discarding it.
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(value);
-  }
-
-  return new TextDecoder("utf-8").decode(Buffer.concat(chunks));
-}
 
 function json(result: ActionApiResult, status: number): Response {
   return new Response(JSON.stringify(result), {
@@ -113,12 +71,6 @@ export async function POST(
     reason: "too-large",
     message: "That submission is too large to send.",
   };
-
-  // Refused from the header when there is one, which costs nothing.
-  const declaredLength = Number(request.headers.get("content-length"));
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_PAYLOAD_BYTES) {
-    return json(tooLarge, 413);
-  }
 
   const raw = await readBounded(request, MAX_PAYLOAD_BYTES);
   if (raw === null) return json(tooLarge, 413);
@@ -189,21 +141,5 @@ function messageFor(name: string, failure: Failure): string {
       return `${name} answered in a way the portal cannot use. The change may have been applied.`;
     case "upstream-error":
       return `${name} reported an error and did not apply the change.`;
-  }
-}
-
-function statusFor(failure: Failure): number {
-  switch (failure.reason) {
-    case "unavailable":
-      return 503;
-    case "timeout":
-      return 504;
-    case "not-found":
-      return 404;
-    case "forbidden":
-      return 403;
-    case "invalid-response":
-    case "upstream-error":
-      return 502;
   }
 }

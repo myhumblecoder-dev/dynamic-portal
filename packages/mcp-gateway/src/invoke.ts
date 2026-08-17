@@ -200,6 +200,13 @@ export function checkArguments(
   schema: JsonObjectSchema,
   args: Readonly<Record<string, unknown>>,
   kind: "read" | "write",
+  /**
+   * What the caller thinks it is calling. "Tool" is the agent's word for it; a
+   * partner reading the public API has never heard of one, and telling them a
+   * query string is not a parameter of "this tool" publishes internal
+   * vocabulary in the one place the whole façade exists to keep it out of.
+   */
+  subject: string = "tool",
 ): Checked {
   const out: Record<string, unknown> = {};
 
@@ -208,7 +215,7 @@ export function checkArguments(
   // pass the undeclared-field check by matching a method nobody declared.
   for (const key of Object.keys(args)) {
     if (!Object.hasOwn(schema.properties, key)) {
-      return { ok: false, message: `"${key}" is not a parameter of this tool.` };
+      return { ok: false, message: `"${key}" is not a parameter of this ${subject}.` };
     }
   }
 
