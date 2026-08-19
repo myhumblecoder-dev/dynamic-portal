@@ -74,6 +74,13 @@ Open `/`. Click **Orders**, then **Fleet**, then **Depots**.
 Copy the URL of a detail screen, paste it in a new tab, hit back. It all works
 — these are real routes, not an iframe.
 
+**Pick the brand.** `PORTAL_BRAND=covermymeds docker compose up -d hub` dresses
+the portal in the organisation's own colours — a restart, not a rebuild. Worth
+doing before the room: a portal wearing your palette stops reading as a
+prototype. The colours were read off the public site rather than a brand guide,
+so a designer should confirm the exact values; correcting them is one block in
+`globals.css`, which is itself the point.
+
 ### 2 · Where is the JavaScript? (2 min) — *kills version-and-dependency hell*
 
 > "Fleet is Python. Depots is C#. Neither ships a line of JavaScript or a byte

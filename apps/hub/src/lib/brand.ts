@@ -20,7 +20,7 @@
  * or the reverse — is a brand that resolves to the default while claiming to be
  * something, and a stylesheet cannot be asked at runtime which names it knows.
  */
-export const BRANDS = ["contoso"] as const;
+export const BRANDS = ["contoso", "covermymeds"] as const;
 
 /**
  * Resolves `PORTAL_BRAND`, or throws.

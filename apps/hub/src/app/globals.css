@@ -98,6 +98,51 @@
   --chart-6: #217f8a;
 }
 
+/*
+ * A second brand, taken from a real organisation's public site.
+ *
+ * Read off the marketing homepage rather than a brand guide, so treat these as
+ * a close likeness rather than the official values — a design team would
+ * correct the exact hexes in minutes, and the point of this block is that
+ * correcting them is all it takes.
+ *
+ * The identity is four colours doing distinct jobs: navy carries text and
+ * headings, magenta is reserved for the thing you are meant to click, and
+ * orange and blue appear as secondary accents. Magenta is therefore `--accent`
+ * — matching what the brand itself treats as its call to action — which pushes
+ * `--tone-danger` to a true red so a destructive control never reads as merely
+ * the primary one.
+ */
+:root[data-brand="covermymeds"] {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  /* The blush the site uses behind its utility bar. */
+  --surface-sunken: #fdf1ec;
+  --border: #e7dcd6;
+  --border-strong: #c9b8ae;
+
+  --text: #123a5e;
+  --text-muted: #5d6b7a;
+  --text-inverse: #ffffff;
+
+  --tone-neutral: #4a5764;
+  --tone-info: #2e6da4;
+  --tone-success: #1a7a55;
+  --tone-warning: #c2711d;
+  /* Deliberately not the brand magenta: a delete button and a primary button
+     must not be the same colour, whatever the brand does elsewhere. */
+  --tone-danger: #b3261e;
+
+  --accent: #ce1f63;
+
+  --chart-1: #123a5e;
+  --chart-2: #ce1f63;
+  --chart-3: #e8873a;
+  --chart-4: #2e6da4;
+  --chart-5: #1a7a55;
+  --chart-6: #7a4b8c;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #16150f;
@@ -160,6 +205,39 @@
     --chart-4: #b39ae0;
     --chart-5: #e2848c;
     --chart-6: #63c3cc;
+  }
+
+  /*
+   * The same identity after dark. The navy that carried text in daylight
+   * cannot carry it here, so it becomes the ground and the magenta lifts to
+   * stay legible on it — the brand's own colours, re-cast rather than
+   * inverted.
+   */
+  :root[data-brand="covermymeds"] {
+    --bg: #0c1c2b;
+    --surface: #12283b;
+    --surface-sunken: #16324a;
+    --border: #274563;
+    --border-strong: #3a5b7c;
+
+    --text: #eaf1f8;
+    --text-muted: #9fb2c4;
+    --text-inverse: #0c1c2b;
+
+    --tone-neutral: #93a6b8;
+    --tone-info: #74a9dc;
+    --tone-success: #5cbf9c;
+    --tone-warning: #e0a05c;
+    --tone-danger: #ea8a83;
+
+    --accent: #f4699f;
+
+    --chart-1: #74a9dc;
+    --chart-2: #f4699f;
+    --chart-3: #efa25e;
+    --chart-4: #8fc4ea;
+    --chart-5: #5cbf9c;
+    --chart-6: #bb9ad6;
   }
 }
 

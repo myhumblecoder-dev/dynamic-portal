@@ -409,7 +409,9 @@ test.describe("the brand", () => {
     const other = await page.evaluate((current: string) => {
       const root = document.documentElement;
       const previous = root.dataset["brand"];
-      if (current === "contoso") delete root.dataset["brand"];
+      // Swap to *no* brand when one is set, and to any known brand when none
+      // is — either direction must change the palette.
+      if (current !== "") delete root.dataset["brand"];
       else root.dataset["brand"] = "contoso";
       const swapped = getComputedStyle(root).getPropertyValue("--accent").trim();
       if (previous === undefined) delete root.dataset["brand"];
@@ -424,7 +426,26 @@ test.describe("the brand", () => {
     // attribute insists otherwise, which is a rebrand that silently did not
     // happen — the hub now refuses to start rather than serve that, and this
     // is the assertion that would notice if it stopped.
-    if (brand !== "") expect(["contoso"]).toContain(brand);
+    //
+    // Read from the stylesheet rather than listed here: a hardcoded list makes
+    // adding a brand break a test that has nothing to do with the change,
+    // which teaches people to edit the assertion instead of reading it.
+    if (brand !== "") {
+      const known = await page.evaluate((name: string) => {
+        const root = document.documentElement;
+        const previous = root.dataset["brand"];
+        root.dataset["brand"] = name;
+        const branded = getComputedStyle(root).getPropertyValue("--accent").trim();
+        delete root.dataset["brand"];
+        const bare = getComputedStyle(root).getPropertyValue("--accent").trim();
+        if (previous !== undefined) root.dataset["brand"] = previous;
+        // A brand the stylesheet does not know changes nothing, which is
+        // exactly the silent failure this is looking for.
+        return branded !== bare;
+      }, brand);
+
+      expect(known, `the stylesheet has no palette for "${brand}"`).toBe(true);
+    }
   });
 });
 
