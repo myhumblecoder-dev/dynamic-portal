@@ -126,7 +126,7 @@ than a silent empty value.
 | `PORTAL_ORDERS_URL` / `PORTAL_FLEET_URL` / `PORTAL_DEPOTS_URL` | Satellite base URLs. |
 | `PORTAL_DEV_TENANT` / `PORTAL_DEV_AUDIENCE` | Switch the development session's tenant or audience, for exercising isolation by hand. |
 | `PORTAL_ALLOW_DEV_SESSION` | Lets the development session stub run under `NODE_ENV=production`. Set only by the compose stack. |
-| `PORTAL_BRAND` | Which palette the portal wears. Every brand ships in the hub's stylesheet, so a rebrand costs no rebuild and no satellite is redeployed or told; applying it re-creates the hub container (`docker compose up -d hub`, not `restart`, which keeps the environment it was created with). Currently `contoso`; unset is the default palette, and an unrecognised name is a startup error rather than a rebrand that silently did not happen. |
+| `PORTAL_BRAND` | Which palette the portal wears. Every brand ships in the hub's stylesheet, so a rebrand costs no rebuild and no satellite is redeployed or told; applying it re-creates the hub container (`docker compose up -d hub`, not `restart`, which keeps the environment it was created with). Currently `contoso` and `partner`; unset is the default palette, and an unrecognised name is a startup error rather than a rebrand that silently did not happen. |
 
 The session is a **development stub** and refuses to run under
 `NODE_ENV=production` without that last flag. Production replaces it with OIDC

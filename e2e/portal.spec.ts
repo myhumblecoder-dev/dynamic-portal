@@ -386,7 +386,7 @@ test.describe("the brand", () => {
     expect(depots).toBe(orders);
   });
 
-  test("ships two palettes that actually differ, and wears the one it was told to", async ({
+  test("ships palettes that actually differ, and wears the one it was told to", async ({
     page,
   }) => {
     // Named for what it checks. It was "changes what a satellite looks like
@@ -430,21 +430,42 @@ test.describe("the brand", () => {
     // Read from the stylesheet rather than listed here: a hardcoded list makes
     // adding a brand break a test that has nothing to do with the change,
     // which teaches people to edit the assertion instead of reading it.
+    //
+    // Asked as "which brands does the stylesheet have a block for", not as
+    // "does setting this one change `--accent`" — the latter is the assertion
+    // immediately above, re-derived, and a check that can only fail when
+    // another check has already failed is not a check.
     if (brand !== "") {
-      const known = await page.evaluate((name: string) => {
-        const root = document.documentElement;
-        const previous = root.dataset["brand"];
-        root.dataset["brand"] = name;
-        const branded = getComputedStyle(root).getPropertyValue("--accent").trim();
-        delete root.dataset["brand"];
-        const bare = getComputedStyle(root).getPropertyValue("--accent").trim();
-        if (previous !== undefined) root.dataset["brand"] = previous;
-        // A brand the stylesheet does not know changes nothing, which is
-        // exactly the silent failure this is looking for.
-        return branded !== bare;
-      }, brand);
+      const known = await page.evaluate(() => {
+        const names = new Set<string>();
+        const walk = (rules: CSSRuleList) => {
+          for (const rule of Array.from(rules)) {
+            const nested = (rule as CSSGroupingRule).cssRules;
+            if (nested) walk(nested);
+            const selector = (rule as CSSStyleRule).selectorText;
+            if (typeof selector !== "string") continue;
+            for (const found of selector.matchAll(/\[data-brand=["']?([^"'\]]+)["']?\]/g)) {
+              names.add(found[1]!);
+            }
+          }
+        };
+        for (const sheet of Array.from(document.styleSheets)) {
+          // Only same-origin sheets expose their rules, and every sheet the
+          // hub serves is one; anything else is not ours to read.
+          try {
+            walk(sheet.cssRules);
+          } catch {
+            continue;
+          }
+        }
+        return [...names];
+      });
 
-      expect(known, `the stylesheet has no palette for "${brand}"`).toBe(true);
+      // Guards the guard: a stylesheet that stopped shipping brand blocks at
+      // all, or rules this could not read, would otherwise make the assertion
+      // below fail for the wrong reason — or a `.toContain` on nothing pass.
+      expect(known.length, "no brand palettes found in any stylesheet").toBeGreaterThan(0);
+      expect(known, `the stylesheet has no palette for "${brand}"`).toContain(brand);
     }
   });
 });

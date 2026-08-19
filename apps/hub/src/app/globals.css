@@ -99,12 +99,15 @@
 }
 
 /*
- * A second brand, taken from a real organisation's public site.
+ * A third palette, taken from a real organisation's public site.
  *
- * Read off the marketing homepage rather than a brand guide, so treat these as
- * a close likeness rather than the official values — a design team would
- * correct the exact hexes in minutes, and the point of this block is that
- * correcting them is all it takes.
+ * Named generically on purpose. This repository is public, and a brand key
+ * carrying a real company's name reads as an affiliation to anyone who finds
+ * it — the other palette here is `contoso`, which is Microsoft's canonical
+ * *fictional* company, and breaking that convention was the mistake. The
+ * colours are a close likeness of a real palette rather than its official
+ * values; a design team correcting the exact hexes is this one block, which is
+ * the point the brand exists to make.
  *
  * The identity is four colours doing distinct jobs: navy carries text and
  * headings, magenta is reserved for the thing you are meant to click, and
@@ -113,7 +116,7 @@
  * `--tone-danger` to a true red so a destructive control never reads as merely
  * the primary one.
  */
-:root[data-brand="covermymeds"] {
+:root[data-brand="partner"] {
   --bg: #ffffff;
   --surface: #ffffff;
   /* The blush the site uses behind its utility bar. */
@@ -126,9 +129,13 @@
   --text-inverse: #ffffff;
 
   --tone-neutral: #4a5764;
-  --tone-info: #2e6da4;
-  --tone-success: #1a7a55;
-  --tone-warning: #c2711d;
+  /* Darker than the site's own blue, green and orange, and deliberately so: a
+     tone is a text colour, and it is also the *ink* of a badge whose ground is
+     the same colour at 16-18%. The marketing orange (#e8873a) reached 2.6:1 on
+     white; these clear 4.5:1 both plain and tinted. */
+  --tone-info: #2b6499;
+  --tone-success: #18704e;
+  --tone-warning: #974d12;
   /* Deliberately not the brand magenta: a delete button and a primary button
      must not be the same colour, whatever the brand does elsewhere. */
   --tone-danger: #b3261e;
@@ -137,9 +144,9 @@
 
   --chart-1: #123a5e;
   --chart-2: #ce1f63;
-  --chart-3: #e8873a;
-  --chart-4: #2e6da4;
-  --chart-5: #1a7a55;
+  --chart-3: #974d12;
+  --chart-4: #2b6499;
+  --chart-5: #18704e;
   --chart-6: #7a4b8c;
 }
 
@@ -153,7 +160,14 @@
 
     --text: #f0ede6;
     --text-muted: #a39d92;
+    /* Omitting a token here is not a fallback, it is the daylight value: the
+       `:root` above supplies whatever this block leaves out. Dark mode was
+       therefore painting a near-black `--tone-neutral` onto a near-black
+       surface (1.8:1), and white `--text-inverse` onto a pale accent (2.5:1),
+       which is the exact failure the brand blocks below are careful about. */
+    --text-inverse: #16150f;
 
+    --tone-neutral: #a8a196;
     --tone-info: #7aa9e0;
     --tone-success: #63c795;
     --tone-warning: #d8a250;
@@ -213,7 +227,7 @@
    * stay legible on it — the brand's own colours, re-cast rather than
    * inverted.
    */
-  :root[data-brand="covermymeds"] {
+  :root[data-brand="partner"] {
     --bg: #0c1c2b;
     --surface: #12283b;
     --surface-sunken: #16324a;
@@ -234,8 +248,11 @@
 
     --chart-1: #74a9dc;
     --chart-2: #f4699f;
-    --chart-3: #efa25e;
-    --chart-4: #8fc4ea;
+    --chart-3: #e0a05c;
+    /* Paler than the series above it rather than beside it: the light palette
+       separates its two blues by depth, which dark mode cannot do without
+       losing one of them into the ground. */
+    --chart-4: #c3dcf2;
     --chart-5: #5cbf9c;
     --chart-6: #bb9ad6;
   }
