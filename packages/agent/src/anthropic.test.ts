@@ -52,4 +52,14 @@ describe("adaptive thinking", () => {
   it("tolerates a dated alias", () => {
     expect(supportsAdaptiveThinking("claude-opus-4-6-20260101")).toBe(true);
   });
+
+  it("reads the version segment, not any number in the name", () => {
+    // A name can carry numbers that are not a version — a gateway prefix, a
+    // region, a `-v1` suffix. Reading the first of those as the major version
+    // is a confident wrong answer, and wrong in the direction that silently
+    // removes thinking from a model that supports it.
+    expect(supportsAdaptiveThinking("portal-v2-claude-opus-5")).toBe(true);
+    expect(supportsAdaptiveThinking("anthropic.claude-opus-4-6-v1:0")).toBe(true);
+    expect(supportsAdaptiveThinking("anthropic.claude-haiku-4-5-v1:0")).toBe(false);
+  });
 });

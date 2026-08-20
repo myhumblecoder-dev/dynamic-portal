@@ -261,11 +261,25 @@ export function describeModel(): string {
  * So it moves with the model, in config, next to the model. Unset keeps the
  * default; a value that is not a positive whole number is ignored rather than
  * obeyed, because a cap of `NaN` is no cap at all.
+ *
+ * Plain decimal digits and nothing else. `Number` also reads `1e3` and `0x14`,
+ * which are typo-shaped rather than intentional, and both pass `isInteger` —
+ * `PORTAL_AGENT_MAX_TURNS=1e3` would quietly raise the cap to a thousand turns
+ * on the path whose only job is to bound a bill. A rejected value is said out
+ * loud rather than dropped, because the failure it otherwise causes is the one
+ * this setting exists to fix: the loop runs at 8 and the operator who set 14
+ * reads "did not reach an answer within the turns allowed" with no clue why.
  */
 export function maxTurns(): number | undefined {
   const raw = set("PORTAL_AGENT_MAX_TURNS");
   if (raw === undefined) return undefined;
 
-  const turns = Number(raw);
-  return Number.isInteger(turns) && turns > 0 ? turns : undefined;
+  if (!/^\d+$/.test(raw) || Number(raw) === 0) {
+    console.warn(
+      `PORTAL_AGENT_MAX_TURNS="${raw}" is not a positive whole number of turns; ignoring it.`,
+    );
+    return undefined;
+  }
+
+  return Number(raw);
 }

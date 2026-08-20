@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import * as agent from "./agent";
-import { describeModel, isAgentEnabled, resolveModel } from "./model";
+import { describeModel, isAgentEnabled, maxTurns, resolveModel } from "./model";
 
 /**
  * What the hub says it will talk to, and what it will actually talk to.
@@ -21,6 +21,7 @@ const KEYS = [
   "PORTAL_AGENT_DISABLED_TENANTS",
   "PORTAL_MODEL_PROVIDER",
   "PORTAL_ANTHROPIC_MODEL",
+  "PORTAL_AGENT_MAX_TURNS",
   "PORTAL_OLLAMA_MODEL",
   "PORTAL_OLLAMA_URL",
   "ANTHROPIC_API_KEY",
@@ -258,5 +259,48 @@ describe("choosing the Anthropic model", () => {
     process.env["PORTAL_ANTHROPIC_MODEL"] = "   ";
 
     expect(describeModel()).toContain("claude-opus-5");
+  });
+});
+
+/**
+ * How many turns one question may take.
+ *
+ * The cap bounds a bill, so what it accepts matters as much as what it means.
+ * `Number` reads `1e3` and `0x14` as 1000 and 20 — typo-shaped inputs that
+ * would silently raise the ceiling on the metered path — and a value it cannot
+ * read at all must not be swallowed, because "the loop quietly ran at 8" is
+ * exactly the failure this setting exists to fix.
+ */
+describe("how many turns one question may take", () => {
+  it("is unset by default, so the loop keeps its own", () => {
+    configured();
+
+    expect(maxTurns()).toBeUndefined();
+  });
+
+  it("takes a positive whole number of turns", () => {
+    configured();
+    process.env["PORTAL_AGENT_MAX_TURNS"] = "14";
+
+    expect(maxTurns()).toBe(14);
+  });
+
+  it("treats an empty or blank value as unset", () => {
+    // `PORTAL_AGENT_MAX_TURNS: ${VAR:-}` in a compose file, with nothing set.
+    configured();
+    process.env["PORTAL_AGENT_MAX_TURNS"] = "  ";
+
+    expect(maxTurns()).toBeUndefined();
+  });
+
+  it("ignores values that are not a plain count of turns", () => {
+    // `1e3` and `0x14` both survive `Number(...)` and `Number.isInteger(...)`,
+    // which is how a mistyped cap becomes a thousand billed turns.
+    for (const raw of ["fourteen", "1e3", "0x14", "14.5", "-4", "0", "Infinity"]) {
+      configured();
+      process.env["PORTAL_AGENT_MAX_TURNS"] = raw;
+
+      expect(maxTurns(), raw).toBeUndefined();
+    }
   });
 });

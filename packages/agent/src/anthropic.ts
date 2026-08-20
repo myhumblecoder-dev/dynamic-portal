@@ -32,23 +32,26 @@ export const AGENT_MODEL = "claude-opus-5";
  * the day a model ships, and wrong in the direction where a future Haiku
  * silently loses thinking it supports.
  *
- * The version is read as the numbers in the name, in order, wherever they sit —
- * which covers both spellings the family has used: `claude-opus-4-6` is 4.6 and
- * the older `claude-3-5-sonnet` is 3.5. A run of four or more digits is a date
+ * The version is a hyphen-delimited segment of one or two short numbers, which
+ * covers both spellings the family has used: `claude-opus-4-6` is 4.6 and the
+ * older `claude-3-5-sonnet` is 3.5. A run of four or more digits is a date
  * stamp, not a version part, so `claude-opus-4-6-20260101` is still 4.6.
+ *
+ * Delimited rather than "the first digits anywhere", because a name can carry
+ * numbers that are not a version — a gateway prefix, a region, a `-v1` suffix —
+ * and reading those as one produces a confident wrong answer rather than no
+ * answer, which is the case the default below is supposed to catch.
  *
  * A name this cannot parse is assumed to support it. Both defaults are wrong
  * sometimes; this one fails loudly and immediately with the API saying exactly
  * why, and the other quietly removes thinking from a model that wanted it.
  */
 export function supportsAdaptiveThinking(model: string): boolean {
-  const parts = [...model.matchAll(/\d+/g)]
-    .map((match) => match[0])
-    .filter((digits) => digits.length < 4);
+  const version = /(?:^|-)(\d{1,3})(?:-(\d{1,3}))?(?=-|$)/.exec(model);
+  if (version === null) return true;
 
-  const major = parts[0] === undefined ? undefined : Number(parts[0]);
-  if (major === undefined) return true;
-  const minor = parts[1] === undefined ? 0 : Number(parts[1]);
+  const major = Number(version[1]);
+  const minor = version[2] === undefined ? 0 : Number(version[2]);
 
   return major > 4 || (major === 4 && minor >= 6);
 }
@@ -90,6 +93,18 @@ export function anthropicClient(options: AnthropicClientOptions): ModelClient {
         messages: messages.map(toSdkMessage),
       });
 
+      // Said out loud, because this is the metered path and nothing else
+      // reported what a turn cost. "Every turn is billed" was a claim in a
+      // startup line with no number behind it, so the only way to find out
+      // which question was expensive was the invoice. Before the checks below,
+      // so a turn that ends badly is still counted — those are the expensive
+      // ones.
+      const used = message.usage;
+      console.log(
+        `agent turn: ${model} in=${used.input_tokens} out=${used.output_tokens}` +
+          (used.cache_read_input_tokens ? ` cached=${used.cache_read_input_tokens}` : ""),
+      );
+
       // Two stop reasons produce content the loop cannot use, and both look
       // like an ordinary success to a caller that only reads `content`.
       //
@@ -98,15 +113,6 @@ export function anthropicClient(options: AnthropicClientOptions): ModelClient {
       // get a blank reply. Truncation is worse: a `tool_use` cut off mid-input
       // is a tool call with half its arguments, which the loop would go on to
       // make. Both are raised so the route can say something true instead.
-      // Said out loud, because this is the metered path and nothing else
-      // reported what a turn cost. "Every turn is billed" was a claim in a
-      // startup line with no number behind it, so the only way to find out
-      // which question was expensive was the invoice.
-      const used = message.usage;
-      console.log(
-        `agent turn: ${model} in=${used.input_tokens} out=${used.output_tokens}` +
-          (used.cache_read_input_tokens ? ` cached=${used.cache_read_input_tokens}` : ""),
-      );
       if (message.stop_reason === "refusal") {
         throw new Error("The model declined to answer this request.");
       }
