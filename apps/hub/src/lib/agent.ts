@@ -30,6 +30,7 @@ import { getPortal } from "./portal";
 export {
   describeModel,
   isAgentAllowedForTenant,
+  maxTurns,
   isAgentEnabled,
   resolveModel,
   type ResolvedModel,

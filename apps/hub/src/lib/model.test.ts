@@ -20,6 +20,7 @@ const KEYS = [
   "PORTAL_AGENT",
   "PORTAL_AGENT_DISABLED_TENANTS",
   "PORTAL_MODEL_PROVIDER",
+  "PORTAL_ANTHROPIC_MODEL",
   "PORTAL_OLLAMA_MODEL",
   "PORTAL_OLLAMA_URL",
   "ANTHROPIC_API_KEY",
@@ -207,5 +208,55 @@ describe("what the line is allowed to print", () => {
     const line = describeModel();
     expect(line).not.toContain("hunter2");
     expect(line).toContain("gpu-box:11434");
+  });
+});
+
+/**
+ * Which Anthropic model, when Anthropic is the provider.
+ *
+ * The local model has been overridable since it was added and this one was
+ * not, for no reason anybody chose — so a deployment that wanted a cheaper
+ * model had to edit `packages/agent` and rebuild. The difference between
+ * `claude-opus-5` and `claude-haiku-4-5` is a factor of five on input and
+ * output both, which is a decision a person makes per deployment, not one a
+ * constant makes for them.
+ */
+describe("choosing the Anthropic model", () => {
+  it("defaults to the model the plan picked", () => {
+    configured();
+    delete process.env["PORTAL_MODEL_PROVIDER"];
+
+    expect(describeModel()).toContain("claude-opus-5");
+  });
+
+  it("uses the one the deployment names", () => {
+    configured();
+    delete process.env["PORTAL_MODEL_PROVIDER"];
+    process.env["PORTAL_ANTHROPIC_MODEL"] = "claude-haiku-4-5";
+
+    expect(describeModel()).toContain("claude-haiku-4-5");
+    // Still metered — a cheaper model is not a free one, and the startup line
+    // is the only place anyone is told which it is.
+    expect(describeModel()).toContain("metered");
+  });
+
+  it("ignores the setting when the provider is local", () => {
+    configured();
+    process.env["PORTAL_MODEL_PROVIDER"] = "ollama";
+    process.env["PORTAL_ANTHROPIC_MODEL"] = "claude-haiku-4-5";
+
+    expect(describeModel()).not.toContain("claude-haiku-4-5");
+    expect(describeModel()).toContain("no API cost");
+  });
+
+  it("treats an empty or blank value as unset", () => {
+    // `PORTAL_ANTHROPIC_MODEL=` in a compose file is how a passthrough looks
+    // when the variable is not set on the host, and an empty model name would
+    // reach the API as a 404 nobody could read.
+    configured();
+    delete process.env["PORTAL_MODEL_PROVIDER"];
+    process.env["PORTAL_ANTHROPIC_MODEL"] = "   ";
+
+    expect(describeModel()).toContain("claude-opus-5");
   });
 });

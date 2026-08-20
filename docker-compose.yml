@@ -122,6 +122,14 @@ services:
       # default URL reaches the host from inside the container, which is the
       # one thing that differs from running the hub directly.
       PORTAL_MODEL_PROVIDER: ${PORTAL_MODEL_PROVIDER:-}
+      # Which Anthropic model, when Anthropic is the provider. Unset means the
+      # default in `packages/agent`. `claude-haiku-4-5` is roughly a fifth the
+      # price of `claude-opus-5` on input and output both.
+      PORTAL_ANTHROPIC_MODEL: ${PORTAL_ANTHROPIC_MODEL:-}
+      # How many turns one question may take. Unset keeps the loop's own
+      # default of 8, which was tuned against `claude-opus-5`; a smaller model
+      # doing the same work in more, shorter turns needs more of them.
+      PORTAL_AGENT_MAX_TURNS: ${PORTAL_AGENT_MAX_TURNS:-}
       PORTAL_OLLAMA_URL: ${PORTAL_OLLAMA_URL:-http://host.docker.internal:11434}
       PORTAL_OLLAMA_MODEL: ${PORTAL_OLLAMA_MODEL:-}
       PORTAL_AGENT_DISABLED_TENANTS: ${PORTAL_AGENT_DISABLED_TENANTS:-}

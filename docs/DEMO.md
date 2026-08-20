@@ -63,6 +63,29 @@ complete page, and beat 6 is the only beat that can be cut.
 
 ---
 
+## Which model, and what it costs
+
+Measured, not guessed. Both numbers are one composed home screen — the most
+expensive thing the assistant does, and the only beat that needs a capable model.
+
+| | turns | tokens in / out | per composed home | reliability |
+|---|---|---|---|---|
+| `claude-opus-5` | 2 | 25.3k / 782 | **$0.15** | **3/3** |
+| `claude-haiku-4-5` | 5 | 54.4k / 2,191 | $0.07 | 3/6 |
+| `qwen2.5:7b` (local) | — | — | free | 0/4 |
+
+**Run the demo on Opus.** Haiku looks five times cheaper and is not: it needs
+more turns and re-sends the large tool schema on each one, so it costs $0.13 per
+*successful* composition against Opus's $0.15 — and half its attempts fail, on
+the one beat with nothing to fall back to.
+
+The local model is fine for everything except composition. Use it while
+rehearsing the deterministic beats; switch before beat 6.
+
+**What a run-through costs.** The home page composes on every visit, so a
+reload is $0.15. A rehearsal plus the demo is a pound or two. A full `test:e2e`
+run is **$1.45** — worth knowing before running it in a loop.
+
 ## The spine
 
 ### 1 · One portal, three solutions (2 min)
@@ -267,6 +290,7 @@ in one file.
 | Symptom | Cause | Do this |
 |---|---|---|
 | Assistant says it could not complete | No API credit, or model unreachable | Skip to beat 7; the deterministic portal is unaffected |
+| "did not reach an answer within the turns allowed" | A smaller model needing more turns than the cap | `PORTAL_AGENT_MAX_TURNS=14`, or switch to `claude-opus-5` |
 | A screen shows an error card | That satellite is stopped | `docker compose start satellite-<name>` |
 | Form shows stale data | In-memory state from a rehearsal | `docker compose restart satellite-orders` |
 | Home never fills in | Composition failed | Say so and move on — the cards above it are a complete page |

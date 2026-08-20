@@ -3,7 +3,13 @@ import { conversationBudget, runAgent, trimConversation, type Message } from "@p
 import { signConversation, verifyConversation } from "@portal/identity";
 import { visibleSatellites } from "@portal/registry";
 import type { AgentApiResult } from "@/lib/agentApi";
-import { agentInvoker, buildAgentSurface, isAgentEnabled, modelClient } from "@/lib/agent";
+import {
+  agentInvoker,
+  buildAgentSurface,
+  isAgentEnabled,
+  maxTurns,
+  modelClient,
+} from "@/lib/agent";
 import { auditConfig } from "@/lib/audit";
 import { MAX_PAYLOAD_BYTES, readBounded } from "@/lib/http";
 import { getPortal } from "@/lib/portal";
@@ -210,9 +216,16 @@ export async function POST(request: Request): Promise<Response> {
     const surface = await buildAgentSurface(principal);
     invoker = agentInvoker(principal, surface);
 
+    const turns = maxTurns();
     const outcome = await runAgent(
       { messages, surface, approvals },
-      { client: modelClient(), invoke: invoker.invoke },
+      {
+        client: modelClient(),
+        invoke: invoker.invoke,
+        // Omitted when unset, so the loop keeps its own default rather than
+        // being handed `undefined` as a number.
+        ...(turns === undefined ? {} : { maxTurns: turns }),
+      },
     );
 
     // Every tool call this turn made is on disk before the answer goes out.
@@ -258,12 +271,19 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     return json({ ok: false, message: outcome.reason }, 200);
-  } catch {
+  } catch (error) {
     // The turn failed part way through, and the tool calls it did make before
     // failing still happened. Their records are awaited here too — a turn that
     // ended badly is exactly the one an audit is read for — and a write that
     // fails now cannot change an answer that is already a refusal.
     await invoker?.flush().catch(() => {});
+
+    // Logged where an operator can read it, which is not the same as told to
+    // the caller. Until this line, an unexpected failure left no trace
+    // anywhere: the audit records the calls the turn made, never why it died,
+    // and the response is deliberately one sentence. Diagnosing a 502 meant
+    // reproducing it with a debugger attached.
+    console.error("agent turn failed:", error);
 
     // The model call failed, or a satellite threw where the gateway does not
     // catch. Either way the user gets a sentence, not a stack — the same rule

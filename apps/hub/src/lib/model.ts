@@ -126,7 +126,12 @@ export type ResolvedModel =
  * complete that request".
  */
 const set = (name: string): string | undefined => {
-  const value = process.env[name];
+  // Trimmed, like the provider name above it. `PORTAL_ANTHROPIC_MODEL=` in a
+  // compose file is how a passthrough looks when the host has not set it, and
+  // some shells hand that through as whitespace rather than as empty — which
+  // would otherwise reach the API as a model name of spaces and come back a
+  // 404 nobody could read. A model name or a URL never means to carry padding.
+  const value = process.env[name]?.trim();
   return value === undefined || value === "" ? undefined : value;
 };
 
@@ -164,7 +169,13 @@ export function resolveModel(): ResolvedModel {
     };
   }
 
-  return { provider: "anthropic", model: AGENT_MODEL };
+  // Overridable for the same reason the local model is: which model a
+  // deployment runs is a cost decision, and the gap between `claude-opus-5` and
+  // `claude-haiku-4-5` is a factor of five on input and output both. Editing a
+  // constant in `packages/agent` and rebuilding is not how that should be
+  // spelled. `set` trims and treats blank as unset, so an unset passthrough in
+  // a compose file resolves to the default rather than to "".
+  return { provider: "anthropic", model: set("PORTAL_ANTHROPIC_MODEL") ?? AGENT_MODEL };
 }
 
 /**
@@ -235,3 +246,26 @@ export function describeModel(): string {
   return `${line}; off for ${optedOut} tenant${optedOut === 1 ? "" : "s"} (PORTAL_AGENT_DISABLED_TENANTS)`;
 }
 
+/**
+ * How many turns one question may take.
+ *
+ * The cap exists so a model that will not stop is a bill rather than a bug
+ * report, and 8 was tuned against `claude-opus-5`. It is not a constant of
+ * nature: composing the home screen means reading three satellites and then
+ * calling `render_screen`, and a smaller model that calls one tool per turn —
+ * or needs a second attempt after grounding refuses a figure — runs out doing
+ * exactly the right thing. Measured on `claude-haiku-4-5`, that beat succeeded
+ * roughly one run in four, always with "did not reach an answer within the
+ * turns allowed" after ten seconds.
+ *
+ * So it moves with the model, in config, next to the model. Unset keeps the
+ * default; a value that is not a positive whole number is ignored rather than
+ * obeyed, because a cap of `NaN` is no cap at all.
+ */
+export function maxTurns(): number | undefined {
+  const raw = set("PORTAL_AGENT_MAX_TURNS");
+  if (raw === undefined) return undefined;
+
+  const turns = Number(raw);
+  return Number.isInteger(turns) && turns > 0 ? turns : undefined;
+}

@@ -20,6 +20,40 @@ import type { ContentBlock, Message, ModelClient } from "./loop";
 export const AGENT_MODEL = "claude-opus-5";
 
 /**
+ * Whether this model accepts `thinking: { type: "adaptive" }`.
+ *
+ * Adaptive thinking arrived with the 4.6 generation. Ask a 4.5 model for it and
+ * the request is refused outright — `invalid_request_error: adaptive thinking
+ * is not supported on this model` — so every turn fails, and the route turns
+ * that into one sentence with no clue in it. That is how pointing a demo at
+ * `claude-haiku-4-5` cost an afternoon.
+ *
+ * A version comparison rather than a list of known-good names: a list is wrong
+ * the day a model ships, and wrong in the direction where a future Haiku
+ * silently loses thinking it supports.
+ *
+ * The version is read as the numbers in the name, in order, wherever they sit —
+ * which covers both spellings the family has used: `claude-opus-4-6` is 4.6 and
+ * the older `claude-3-5-sonnet` is 3.5. A run of four or more digits is a date
+ * stamp, not a version part, so `claude-opus-4-6-20260101` is still 4.6.
+ *
+ * A name this cannot parse is assumed to support it. Both defaults are wrong
+ * sometimes; this one fails loudly and immediately with the API saying exactly
+ * why, and the other quietly removes thinking from a model that wanted it.
+ */
+export function supportsAdaptiveThinking(model: string): boolean {
+  const parts = [...model.matchAll(/\d+/g)]
+    .map((match) => match[0])
+    .filter((digits) => digits.length < 4);
+
+  const major = parts[0] === undefined ? undefined : Number(parts[0]);
+  if (major === undefined) return true;
+  const minor = parts[1] === undefined ? 0 : Number(parts[1]);
+
+  return major > 4 || (major === 4 && minor >= 6);
+}
+
+/**
  * Enough for a screen of any size this catalog can express, and not so much
  * that a runaway generation is expensive before `maxTurns` notices.
  */
@@ -43,7 +77,11 @@ export function anthropicClient(options: AnthropicClientOptions): ModelClient {
         // Adaptive rather than a token budget: `budget_tokens` is rejected
         // outright on this model generation, and the work here varies from
         // "answer from one lookup" to "compose a cross-satellite screen".
-        thinking: { type: "adaptive" },
+        //
+        // Omitted entirely on models that predate it, which refuse the request
+        // rather than ignoring the field. A deployment running a 4.5 model gets
+        // a working assistant without thinking, not a broken one with it.
+        ...(supportsAdaptiveThinking(model) ? { thinking: { type: "adaptive" as const } } : {}),
         tools: tools.map((tool) => ({
           name: tool.name,
           description: tool.description,
@@ -60,6 +98,15 @@ export function anthropicClient(options: AnthropicClientOptions): ModelClient {
       // get a blank reply. Truncation is worse: a `tool_use` cut off mid-input
       // is a tool call with half its arguments, which the loop would go on to
       // make. Both are raised so the route can say something true instead.
+      // Said out loud, because this is the metered path and nothing else
+      // reported what a turn cost. "Every turn is billed" was a claim in a
+      // startup line with no number behind it, so the only way to find out
+      // which question was expensive was the invoice.
+      const used = message.usage;
+      console.log(
+        `agent turn: ${model} in=${used.input_tokens} out=${used.output_tokens}` +
+          (used.cache_read_input_tokens ? ` cached=${used.cache_read_input_tokens}` : ""),
+      );
       if (message.stop_reason === "refusal") {
         throw new Error("The model declined to answer this request.");
       }
