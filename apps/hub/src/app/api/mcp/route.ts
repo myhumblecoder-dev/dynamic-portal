@@ -5,7 +5,15 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { callMcpTool, mcpTools, serverInstructions } from "@portal/mcp-server";
+import type { Principal } from "@portal/identity";
 import { agentInvokerDeps, buildAgentSurface, isAgentAllowedForTenant } from "@/lib/agent";
+import {
+  McpAuthError,
+  challengeHeader,
+  presentsCredential,
+  principalFromBearer,
+} from "@/lib/mcpAuth";
+import { oidcConfigured } from "@/lib/oidc";
 import { currentPrincipal } from "@/lib/session";
 
 /**
@@ -22,17 +30,89 @@ import { currentPrincipal } from "@/lib/session";
  * surface is rebuilt per request for the same reason it is in the agent route —
  * a satellite that changed what it offers is reflected on the next call rather
  * than whenever a session happens to end.
+ *
+ * **Authenticated as an OAuth resource server.** A host presents a bearer token
+ * it obtained by sending the user through the same Keycloak login the screens
+ * use; `principalFromBearer` maps it through the same `principalFromClaims`, so
+ * the roles here are the roles the portal would show that person. See
+ * `lib/mcpAuth.ts` for why that mapping, rather than anything in this file, is
+ * what makes "the difference is the wire, not the policy" true.
  */
 
-export async function POST(request: Request): Promise<Response> {
-  let principal;
+/** An OAuth challenge, shaped so a host knows where to begin (RFC 6750, RFC 9728). */
+function challenge(error: McpAuthError): Response {
+  return new Response(
+    JSON.stringify({ error: error.code, error_description: error.message }),
+    {
+      status: error.status,
+      headers: {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+        "www-authenticate": challengeHeader(error.code, error.message),
+      },
+    },
+  );
+}
+
+/**
+ * Who is calling, by whichever credential was presented.
+ *
+ * Bearer first, and — the part that matters — a bearer token that fails to
+ * verify is the end of the request. Falling through to the cookie or the dev
+ * stub after rejecting a token would mean a caller could be *upgraded* by
+ * sending a bad one, which is the opposite of what presenting a credential
+ * means. That is the single rule this function exists to hold.
+ *
+ * With no token at all, `currentPrincipal` answers exactly as it does for the
+ * screens: a session cookie, then the development stub where it is enabled.
+ * Deferring to it rather than challenging immediately keeps one definition of
+ * "who is signed in" for the whole hub — and the stub is already an explicit,
+ * production-refusing switch, so an endpoint that second-guessed it here would
+ * only be disagreeing with the rest of the portal. When it has nothing to
+ * offer, the caller gets the OAuth challenge and can go and get a token.
+ */
+async function principalFor(request: Request): Promise<Principal> {
+  if (presentsCredential(request)) return principalFromBearer(request);
+
   try {
-    principal = await currentPrincipal();
+    return await currentPrincipal();
   } catch {
-    return new Response(JSON.stringify({ error: "unauthenticated" }), {
-      status: 401,
-      headers: { "content-type": "application/json" },
-    });
+    throw new McpAuthError(
+      "invalid_token",
+      oidcConfigured()
+        ? "This endpoint requires an OAuth access token. See the resource metadata to obtain one."
+        : "You are not signed in.",
+    );
+  }
+}
+
+export async function POST(request: Request): Promise<Response> {
+  let principal: Principal;
+  try {
+    principal = await principalFor(request);
+  } catch (error) {
+    return challenge(
+      error instanceof McpAuthError
+        ? error
+        : new McpAuthError("invalid_token", "The credential presented was not accepted."),
+    );
+  }
+
+  // The per-tenant kill switch, which governs the surface rather than whose
+  // model reaches it — so it has to close this endpoint too, and for a while it
+  // did not: the predicate was imported here and never called, leaving
+  // PORTAL_AGENT_DISABLED_TENANTS shutting `/api/agent` while the outward MCP
+  // server stayed open to the same tenant. A withdrawn consent that only closes
+  // the door you happened to think of is not a consent control.
+  if (!isAgentAllowedForTenant(principal)) {
+    return new Response(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: null,
+        error: { code: -32600, message: "The assistant is not enabled for this account." },
+      }),
+      { status: 403, headers: { "content-type": "application/json", "cache-control": "no-store" } },
+    );
   }
 
   let surface;

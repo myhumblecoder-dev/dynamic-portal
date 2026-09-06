@@ -165,6 +165,8 @@ than a silent empty value.
 | `PORTAL_OIDC_CLIENT_ID` / `PORTAL_OIDC_CLIENT_SECRET` | The confidential client the hub authenticates as. |
 | `PORTAL_OIDC_REDIRECT_URI` | The hub's callback URL registered with that client (e.g. `http://localhost:3000/api/auth/callback`). |
 | `PORTAL_SESSION_SECRET` | Secret the encrypted session cookie is keyed from. Required once OIDC is in use. |
+| `PORTAL_PUBLIC_ORIGIN` | The origin MCP hosts reach the hub at. Names the OAuth resource an access token must be audienced to, so it is configuration rather than a `Host` header read. Defaults to `http://localhost:3000`; must match the audience mapper on the `portal-mcp` realm client. |
+| `PORTAL_MCP_CLIENT_ID` | The public PKCE client handed to every caller of the registration shim. Defaults to `portal-mcp`. |
 | `PORTAL_BRAND` | Which palette the portal wears. Every brand ships in the hub's stylesheet, so a rebrand costs no rebuild and no satellite is redeployed or told; applying it re-creates the hub container (`docker compose up -d hub`, not `restart`, which keeps the environment it was created with). Currently `contoso` and `partner`; unset is the default palette, and an unrecognised name is a startup error rather than a rebrand that silently did not happen. |
 
 Two session providers, tried in order: a real **Keycloak OIDC** login (when the
@@ -192,6 +194,103 @@ Two ways to exercise it locally:
 - **Real Keycloak login**: `PORTAL_ALLOW_DEV_SESSION=0 docker compose up` forces the
   OIDC flow. Log in as `lead`, `eng`, `fin`, or `plat` (password = the username) —
   one demo user per role, all in tenant `acme`.
+
+### Connecting an MCP host
+
+`POST /api/mcp` is an OAuth 2.0 protected resource. A host discovers how to
+authenticate, sends the user through the *same* Keycloak login the screens use,
+and comes back with a bearer token whose realm roles become the `Principal`'s
+roles — so the tools it is offered are the ones that person could reach in the
+portal. The difference is the wire, not the policy.
+
+**Claude Code** speaks HTTP MCP directly, which makes it the path to use:
+
+```
+PORTAL_ALLOW_DEV_SESSION=0 docker compose up
+claude mcp add --transport http portal http://localhost:3000/api/mcp --callback-port 47110
+```
+
+Then `/mcp` inside Claude Code, and Authenticate. A browser opens at Keycloak;
+log in as `eng` / `eng`. The `orders.edit` screen is declared `roles: [engineering]`
+by the satellite, so `orders__orders_edit` is among the tools offered. Sign out and
+reconnect as `fin` / `fin` and it is gone — same endpoint, same code, a different
+role. The governed writes (`orders.approve` and the rest) are absent for everyone,
+as they are on any MCP session: they are not listed, and refuse if called by name.
+
+`--callback-port` pins the redirect URI. The realm registers the loopback form, so
+any port works, but a fixed one keeps the flow reproducible.
+
+Keycloak stays the only authorization server. The hub serves RFC 9728 resource
+metadata at `/.well-known/oauth-protected-resource/api/mcp` and republishes the
+realm's authorization metadata with one field changed: `registration_endpoint`
+points at `/api/oauth/register`, which hands every caller the pre-registered
+public `portal-mcp` client. Hosts that require RFC 7591 registration therefore
+connect without Keycloak's own registration endpoint being exposed. Authorization
+and token exchange go straight to Keycloak; the hub never sees a credential.
+
+#### Claude Desktop: works, but read this first
+
+> **Do not sign in for the first time from Claude Desktop.** It opens a browser
+> sign-in window *per connection attempt*, and none of them can succeed. Run
+> `scripts/mcp-login.sh` first, then start Desktop.
+
+Desktop's `claude_desktop_config.json` accepts only stdio servers — an entry
+without a `command` is silently skipped with a warning dialog — so a remote HTTP
+server has to go through `mcp-remote`, a stdio-to-HTTP bridge that performs the
+OAuth flow itself:
+
+```jsonc
+// ~/Library/Application Support/Claude/claude_desktop_config.json   (macOS)
+{
+  "mcpServers": {
+    "dynamic-portal": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote@0.8.3", "http://localhost:3000/api/mcp", "47110"]
+    }
+  }
+}
+```
+
+The bridge is where the trouble comes from. Desktop tears down an MCP server that
+has not finished `initialize` within its startup timeout and respawns it, and
+`mcp-remote` opens a browser every time it starts. Nobody logs in that fast, so
+each respawn adds another sign-in window — and each new process invalidates the
+previous one's PKCE verifier, so the earlier windows are already dead. Observed:
+three windows, four spawns, no connection.
+
+Authenticating *before* Desktop launches removes the race. Nothing supervises
+that process, so the browser can stay open as long as you need:
+
+```
+scripts/mcp-login.sh          # sign in once, at your own pace
+open -a Claude                # connects immediately, no browser
+```
+
+This is not specific to Desktop — Claude Code does the same thing if you point it
+at the stdio bridge instead of using `--transport http` (two windows, then a
+timeout). It is inherent to supervising a stdio server that blocks on a human.
+Claude Code simply does not need the bridge.
+
+`~/.mcp-auth` caches the token. To sign in as somebody else, delete it *and* end
+the Keycloak session — otherwise SSO re-authorizes silently as the previous user
+and no login is shown:
+
+```
+rm -rf ~/.mcp-auth
+open http://localhost:8080/realms/portal/protocol/openid-connect/logout
+```
+
+> Run the stack with `PORTAL_ALLOW_DEV_SESSION=0`. With the stub enabled the
+> endpoint answers an unauthenticated host as one fixed all-roles tenant, so the
+> host never starts the OAuth flow and every user looks the same.
+
+> The `portal-mcp` client registers `http://localhost/*` and `http://127.0.0.1/*`,
+> which is Keycloak's loopback form: the port is ignored (MCP hosts bind an
+> ephemeral one) and the host is anchored. The obvious-looking `http://localhost*`
+> is **not** equivalent and must not be used — a trailing wildcard is a plain
+> prefix match, so it also matches `http://localhost.attacker.example/`, and a
+> public client whose redirect URI an attacker controls hands them the
+> authorization code and with it the user's roles.
 
 ## Conventions
 

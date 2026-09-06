@@ -21,8 +21,17 @@ const SESSION_COOKIE = "portal_session";
 export function middleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
 
-  // The auth routes and health must always be reachable without a session.
-  if (pathname.startsWith("/api/auth/") || pathname === "/healthz") {
+  // The auth routes and health must always be reachable without a session — as
+  // must OAuth discovery. `/.well-known/` is the one unauthenticated path that
+  // is not under `/api/`, so without naming it here the branch at the bottom
+  // would redirect it to the login page: a host asking how to authenticate
+  // would be handed an HTML sign-in form, and the flow would fail before it
+  // began.
+  if (
+    pathname.startsWith("/api/auth/") ||
+    pathname.startsWith("/.well-known/") ||
+    pathname === "/healthz"
+  ) {
     return NextResponse.next();
   }
 

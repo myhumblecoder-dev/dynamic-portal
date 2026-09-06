@@ -152,6 +152,81 @@ describe("what an MCP host is offered", () => {
   });
 });
 
+/**
+ * The property that makes the outward endpoint safe to point a host at.
+ *
+ * A staff member connecting Claude Code authenticates through the same Keycloak
+ * login as the portal, and their access token's realm roles become the
+ * `Principal`'s roles. If the surface did not narrow on them, the endpoint would
+ * be a way to escape the role gating the screens apply — the same account, the
+ * same registry policy, a wider answer, because the credential arrived over a
+ * different wire.
+ *
+ * Nothing in this file exercised that: the fixture principal above carries no
+ * `roles` at all, so every case here ran un-role-gated.
+ */
+describe("roles scope the surface, not just the screens", () => {
+  /** `orders.approve` is registry-gated to finance, as it is in config/satellites.yaml. */
+  function roleGatedSurface(roles: readonly string[] | undefined): ToolSurface {
+    const satellite = SatelliteSchema.parse({
+      id: "orders",
+      displayName: "Orders",
+      baseUrl: "http://localhost:4001",
+      owner: "team",
+      tools: {
+        "orders.approve": { agentVisible: true, requiresConfirmation: false, roles: ["finance"] },
+        "orders.refresh": { agentVisible: true, requiresConfirmation: false },
+      },
+    });
+    const manifest = ManifestSchema.parse({
+      protocol: "1.1",
+      satelliteId: "orders",
+      displayName: "Orders",
+      screens: [],
+      actions: [
+        { id: "orders.approve", title: "Approve order", params: [] },
+        { id: "orders.refresh", title: "Refresh", params: [] },
+      ],
+    });
+    return buildSurface(
+      [{ satellite, manifest }],
+      { ...principal, ...(roles !== undefined ? { roles: roles as never } : {}) },
+    );
+  }
+
+  it("offers a finance-gated tool to finance", () => {
+    const names = mcpTools(roleGatedSurface(["finance"])).map((tool) => tool.name);
+    expect(names).toContain("orders__orders_approve");
+  });
+
+  it("hides it from engineering — the same endpoint, the same code, a different role", () => {
+    const names = mcpTools(roleGatedSurface(["engineering"])).map((tool) => tool.name);
+    expect(names).not.toContain("orders__orders_approve");
+    // The un-gated tool is still there, so this is narrowing rather than a
+    // surface that failed to build.
+    expect(names).toContain("orders__orders_refresh");
+  });
+
+  it("refuses to call it by name for a role that cannot see it", async () => {
+    const result = await callMcpTool(
+      roleGatedSurface(["engineering"]),
+      "orders__orders_approve",
+      {},
+      { ...principal, roles: ["engineering"] },
+      stubbedDeps(),
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toMatch(/no tool named/i);
+    // Absence, not refusal — and nothing reached the satellite.
+    expect(invoked).toEqual([]);
+  });
+
+  it("hides it from a principal holding no roles at all", () => {
+    const names = mcpTools(roleGatedSurface(undefined)).map((tool) => tool.name);
+    expect(names).not.toContain("orders__orders_approve");
+  });
+});
+
 describe("the instructions a host reads first", () => {
   it("names the governed writes and where to perform them", () => {
     // An agent that cannot see the tool will otherwise tell the user the thing

@@ -187,6 +187,11 @@ services:
       PORTAL_OIDC_CLIENT_SECRET: ${PORTAL_OIDC_CLIENT_SECRET:-portal-hub-dev-secret}
       PORTAL_OIDC_REDIRECT_URI: ${PORTAL_OIDC_REDIRECT_URI:-http://localhost:3000/api/auth/callback}
       PORTAL_SESSION_SECRET: ${PORTAL_SESSION_SECRET:-dev-only-not-a-real-session-secret}
+      # The origin an MCP host reaches this hub at. It is configuration rather
+      # than a read of the `Host` header because it names the OAuth resource the
+      # access token must be audienced to, and a header is caller-supplied.
+      # Must match the audience mapper on the `portal-mcp` realm client.
+      PORTAL_PUBLIC_ORIGIN: ${PORTAL_PUBLIC_ORIGIN:-http://localhost:3000}
     # `host.docker.internal` is a Docker Desktop convenience; on Linux the name
     # does not resolve at all, and the only symptom is the assistant answering
     # "could not complete that request". Mapped explicitly so the local-model

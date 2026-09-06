@@ -221,7 +221,9 @@ flowchart LR
 
 The hub logs the user in at **Keycloak** (OIDC authorization-code + PKCE), exchanges the code, and maps verified claims into the same `Principal` every call already takes. A dev-session stub remains available behind `PORTAL_ALLOW_DEV_SESSION` (with `PORTAL_DEV_ROLES` to act as a role) for local work.
 
-On the wire to satellites the hub currently signs the `Principal` (HMAC, shared across TS/Python/C# with a pinned cross-language token fixture). Replacing that leg with **RFC 8693 token exchange** verified against the issuer's JWKS is the planned next step and requires no call-site change — the `Principal` shape does not move. Because the signed principal is strict and cross-language, adding the `roles` claim forced a **rollout order**: satellites accept the claim first (optional), then the hub begins sending it.
+**The outward MCP endpoint authenticates as an OAuth 2.0 resource server.** A cookie is the right credential for a browser and the wrong one for Claude Desktop, Claude Code, or an IDE agent — none of which has one. Those hosts discover `/api/mcp` through RFC 9728 resource metadata, run authorization-code + PKCE against the *same* Keycloak realm, and present a bearer JWT the hub verifies against the realm's JWKS. The verified claims go through `principalFromClaims` — the same mapper the browser login uses — so the roles on an MCP session are the roles the portal would show that person, and `entitle()` filters the tool surface with no knowledge of which wire the request arrived on. Keycloak remains the only authorization server; the hub republishes the realm's metadata with `registration_endpoint` pointed at a shim that hands every caller one pre-registered public client, so hosts requiring RFC 7591 registration connect without Keycloak's registration endpoint being exposed.
+
+On the wire to satellites the hub currently signs the `Principal` (HMAC, shared across TS/Python/C# with a pinned cross-language token fixture). Replacing that leg with **RFC 8693 token exchange** verified against the issuer's JWKS is the planned next step and requires no call-site change — the `Principal` shape does not move; the bearer work above changed only the inbound leg. Because the signed principal is strict and cross-language, adding the `roles` claim forced a **rollout order**: satellites accept the claim first (optional), then the hub begins sending it.
 
 ### 7.5 Tenancy and audit
 
@@ -244,7 +246,7 @@ flowchart TB
 
 - **Screens** — PUP → catalog components, rendered by the hub under its brand.
 - **Agent tools** — screens become reads, actions become writes, via the PUP→MCP **shim**; a satellite with its own MCP server is **adopted** instead. Governance (`agentVisible`, `requiresConfirmation`, `rbacScopes`, `roles`) lives in the registry — the one place the zero-hub-deploy promise deliberately does not apply, because exposing a mutation to a model is a human decision made in a reviewed file.
-- **Outward MCP** — the hub's aggregated, RBAC/audience/role-filtered tool surface as a single MCP server for external agents.
+- **Outward MCP** — the hub's aggregated, RBAC/audience/role-filtered tool surface as a single MCP server for external agents, reached with an OAuth bearer token from the same Keycloak realm the screens use (§7.4).
 - **Public API** — a brokered façade that maps internal ids to stable public names, external-only, versioned independently so a satellite renaming a screen breaks no partner.
 
 **A new projection in 2029 is one addition inside the hub — not 20 integration projects.**

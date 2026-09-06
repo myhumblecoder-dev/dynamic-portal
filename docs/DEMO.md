@@ -266,6 +266,44 @@ front of them is the recommendation: one in three. A team should host one when
 it has a capability its screens cannot express. Otherwise the shim is strictly
 less work for the same reach.
 
+### 6c · The same surface from outside the portal (4 min) — *optional*
+
+Run this from **Claude Code**, not Claude Desktop. See the warning below.
+
+Set up before the room is watching — the stack on `PORTAL_ALLOW_DEV_SESSION=0`,
+so the endpoint genuinely demands a token:
+
+```
+claude mcp add --transport http portal http://localhost:3000/api/mcp --callback-port 47110
+```
+
+Live, run `/mcp` → Authenticate. A browser opens at Keycloak — the *same* login
+the portal uses. Sign in as `eng`, then ask it to list the orders. Real data,
+from the same satellite the screens read.
+
+The beat lands on what is *missing*. `orders__orders_edit` is there for `eng`
+because the satellite declares that screen `roles: [engineering]`. Sign out, sign
+back in as `fin`, and it is gone. `orders.approve` is absent for both, and refuses
+if named directly.
+
+> "This is the same endpoint, the same code, and the same registry file. The
+> only thing that changed is who logged in. An agent outside the portal gets
+> exactly what that person would get inside it — nothing widened because the
+> request arrived over a different wire."
+
+**Do not run this beat from Claude Desktop.** Desktop can only talk to stdio
+servers, so it needs the `mcp-remote` bridge, and it kills any MCP server that
+has not finished `initialize` within its startup timeout, then respawns it. The
+bridge opens a browser sign-in window on every start, nobody logs in that fast,
+and each new process invalidates the previous window's PKCE verifier. In front of
+an audience that is three or four dead sign-in windows and no connection.
+
+Desktop does work if it is signed in *before* it launches — `scripts/mcp-login.sh`,
+then start Desktop — but there is no reason to take the risk live. Claude Code
+speaks HTTP directly and has none of this. If someone asks, the honest answer is
+that it is a host limitation, not a portal one: the same bridge misbehaves under
+Claude Code too, and neither host needs it when the host can speak HTTP.
+
 ### 7 · The ask (3 min)
 
 Two or three named solutions, one quarter, and the platform team writes the
@@ -298,6 +336,9 @@ in one file.
 | Home never fills in | Composition failed | Say so and move on — the cards above it are a complete page |
 | A card is stuck on "Checking…" | That satellite is slow | It resolves or gives up within its timeout; the other cards are unaffected, which is beat 5 arriving early |
 | A card shows no figures | That satellite nominates no summary screen, or the account cannot read it | Expected, not broken — the card still shows health |
+| `/mcp` shows "Needs authentication" and nothing happens | Normal — authentication is user-initiated | Choose the server, then Authenticate; a browser opens |
+| MCP login shows no sign-in page | A Keycloak SSO session is still live, so it re-authorized silently as the previous user | Open `http://localhost:8080/realms/portal/protocol/openid-connect/logout`, then reconnect |
+| Several Keycloak sign-in windows open at once | Claude Desktop respawning the stdio bridge — see beat 6c | Quit Desktop, `pkill -f mcp-remote`, run `scripts/mcp-login.sh`, then reopen. Better: run the beat from Claude Code |
 | `orders.search` not found | The orders MCP server is unreachable | Skip beat 6b — the other tools are unaffected, which is itself the point of beat 5 |
 
 **Do not** run `docker compose down` in the room. Restarting a service keeps
